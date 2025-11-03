@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Cadastro de Moto</title>
+</head>
+<body>
+<h1 th:text="${moto.id} != null ? 'Editar Moto' : 'Nova Moto'"></h1>
+
+<form th:action="@{/motos}" th:object="${moto}" method="post">
+    <input type="hidden" th:field="*{id}" />
+    <label>Placa:</label>
+    <input type="text" th:field="*{placa}" /><br>
+    <label>Modelo:</label>
+    <input type="text" th:field="*{modelo}" /><br>
+    <button type="submit">Salvar</button>
+</form>
+</body>
+</html>
