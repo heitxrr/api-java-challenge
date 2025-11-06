@@ -23,12 +23,12 @@ stages:
 # ETAPA 1 - BUILD e PUSH para o ACR
 # =====================================
 - stage: Build
-  displayName: 'Build and Push to ACR'
+  displayName: 'Build and Push Docker Image'
   jobs:
     - job: Build
-      displayName: 'Docker Build and Push'
+      displayName: 'Build and Push Docker Image'
       steps:
-        # Build e push do Docker usando o Dockerfile (multistage)
+        # Login no ACR
         - task: Docker@2
           displayName: 'Build and Push image to ACR'
           inputs:
@@ -40,14 +40,14 @@ stages:
               $(imageTag)
 
 # =====================================
-# ETAPA 2 - DEPLOY no ACI (CD)
+# ETAPA 2 - DEPLOY no ACI
 # =====================================
 - stage: Deploy
   displayName: 'Deploy to Azure Container Instance'
   dependsOn: Build
   jobs:
     - job: Deploy
-      displayName: 'Create ACI from ACR image'
+      displayName: 'Deploy Container to ACI'
       steps:
         - task: AzureCLI@2
           displayName: 'Deploy container to ACI'
@@ -58,8 +58,10 @@ stages:
             inlineScript: |
               echo "Deploying container $(appName) to Azure Container Instance..."
 
+              # Faz login no ACR
               az acr login --name $(acrName)
 
+              # Cria ou atualiza o container no ACI
               az container create \
                 --name $(appName) \
                 --resource-group $(resourceGroup) \
@@ -69,6 +71,7 @@ stages:
                 --dns-name-label $(appName) \
                 --ports 8080 \
                 --registry-login-server $(acrLoginServer) \
-                --assign-identity
+                --assign-identity \
+                --restart-policy Always
 
               echo "Deploy concluído no Azure Container Instance!"
