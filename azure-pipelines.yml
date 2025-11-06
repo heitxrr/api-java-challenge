@@ -28,16 +28,7 @@ stages:
     - job: Build
       displayName: 'Docker Build and Push'
       steps:
-        # Build da aplicação usando Maven
-        - task: Maven@3
-          inputs:
-            mavenPomFile: 'pom.xml'
-            goals: 'clean package'
-            options: '-DskipTests'
-            javaHomeOption: 'JDKVersion'
-            jdkVersionOption: '1.17'
-
-        # Build e push do Docker usando o Dockerfile
+        # Build e push do Docker usando o Dockerfile (multistage)
         - task: Docker@2
           displayName: 'Build and Push image to ACR'
           inputs:
