@@ -28,16 +28,16 @@ stages:
     - job: Build
       displayName: 'Docker Build and Push'
       steps:
-        # Build da aplicação usando Gradle
-        - task: Gradle@2
+        # Build da aplicação usando Maven
+        - task: Maven@3
           inputs:
-            gradleWrapperFile: 'gradlew'
-            tasks: 'clean build'
-            publishJUnitResults: false
+            mavenPomFile: 'pom.xml'
+            goals: 'clean package'
+            options: '-DskipTests'
             javaHomeOption: 'JDKVersion'
             jdkVersionOption: '1.17'
-        
-        # Build e push do Docker usando o Dockerfile com Gradle
+
+        # Build e push do Docker usando o Dockerfile
         - task: Docker@2
           displayName: 'Build and Push image to ACR'
           inputs:
@@ -80,4 +80,4 @@ stages:
                 --registry-login-server $(acrLoginServer) \
                 --assign-identity
 
-              echo " Deploy concluído no Azure Container Instance!"
+              echo "Deploy concluído no Azure Container Instance!"
