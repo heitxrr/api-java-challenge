@@ -1,0 +1,240 @@
+# azure-pipelines-aci.yml
+trigger:
+  branches:
+    include:
+      - master
+      - main
+
+pr:
+  branches:
+    include:
+      - master
+      - main
+
+name: $(Date:yyyyMMdd).$(Rev:r)
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  # App/Infra
+  appName: 'flowmoto-app'
+  resourceGroup: 'FlowMoto'
+  location: 'eastus'
+  # ACR
+  acrName: 'flowmoto'
+  acrLoginServer: 'flowmoto.azurecr.io'
+  imageRepository: 'fiap/flowmoto'
+  dockerRegistryServiceConnection: 'sc-acr-flowmoto'
+  # Azure RM connection
+  azureServiceConnection: 'sc-azure-flowmoto'
+
+stages:
+# =========================
+# CI: build + testes + cobertura + artefato + imagem
+# =========================
+- stage: CI
+  displayName: 'CI — Build, Test, Coverage, Docker build/push'
+  jobs:
+    - job: build_and_push
+      displayName: 'Gradle + Docker'
+      steps:
+        - checkout: self
+          fetchDepth: 1
+
+        # Evita o erro "UseJavaVersion@1" usando a task estável
+        - task: JavaToolInstaller@0
+          displayName: 'Configurar Java 21'
+          inputs:
+            versionSpec: '21'
+            jdkArchitectureOption: 'x64'
+            jdkSourceOption: 'PreInstalled'
+
+        # Cache do Gradle acelera os builds
+        - task: Cache@2
+          displayName: 'Cache Gradle'
+          inputs:
+            key: 'gradle | "$(Agent.OS)" | **/gradle-wrapper.properties'
+            restoreKeys: |
+              gradle | "$(Agent.OS)"
+            path: ~/.gradle
+
+        - script: chmod +x ./gradlew
+          displayName: 'Permissão gradlew'
+
+        # Roda testes com perfil 'test'
+        - script: ./gradlew clean test jacocoTestReport --no-daemon
+          displayName: 'Testes + Jacoco'
+          env:
+            SPRING_PROFILES_ACTIVE: 'test'
+
+        # Publica resultados de teste e cobertura
+        - task: PublishTestResults@2
+          displayName: 'Publicar testes (JUnit)'
+          inputs:
+            testResultsFormat: 'JUnit'
+            testResultsFiles: '/TEST-*.xml'
+            searchFolder: '$(System.DefaultWorkingDirectory)'
+            failTaskOnFailedTests: true
+
+        - task: PublishCodeCoverageResults@2
+          displayName: 'Publicar cobertura (Jacoco)'
+          inputs:
+            codeCoverageTool: 'JaCoCo'
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)//build/reports/jacoco/test/jacocoTestReport.xml'
+            reportDirectory: '$(System.DefaultWorkingDirectory)//build/reports/jacoco/test/html'
+            failIfCoverageEmpty: false
+
+        # Gera o JAR
+        - script: ./gradlew bootJar --no-daemon
+          displayName: 'Build JAR'
+
+        # Mantém artefato
+        - bash: |
+            set -e
+            JAR=$(ls build/libs/*.jar | head -n1)
+            mkdir -p drop
+            cp "$JAR" drop/app.jar
+          displayName: 'Preparar artefato app.jar'
+
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publicar artefato (drop/app.jar)'
+          inputs:
+            pathToPublish: 'drop'
+            artifactName: 'drop'
+            publishLocation: 'Container'
+
+        # Cria Dockerfile dinâmico no pipeline
+        - bash: |
+            echo "Gerando Dockerfile..."
+            cat <<'EOF' > Dockerfile
+            # =============================
+            # Etapa 1 — Build da aplicação
+            # =============================
+            FROM eclipse-temurin:21-jdk AS build
+
+            WORKDIR /app
+
+            COPY gradlew .
+            COPY gradle gradle
+            COPY build.gradle .
+            COPY settings.gradle .
+            COPY src src
+
+            RUN chmod +x gradlew
+            RUN ./gradlew clean bootJar --no-daemon
+
+            # =============================
+            # Etapa 2 — Imagem final
+            # =============================
+            FROM eclipse-temurin:21-jre
+
+            WORKDIR /app
+
+            COPY --from=build /app/build/libs/*.jar app.jar
+
+            EXPOSE 8080
+
+            # Argumentos que podem ser passados no build
+            ARG SPRING_PROFILES_ACTIVE=prod
+            ARG SPRING_DATASOURCE_URL
+            ARG SPRING_DATASOURCE_USERNAME
+            ARG SPRING_DATASOURCE_PASSWORD
+
+            # Variáveis de ambiente para execução
+            ENV SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+            ENV SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
+            ENV SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
+            ENV SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
+            ENV SERVER_PORT=8080
+
+            ENTRYPOINT ["java", "-jar", "app.jar"]
+            EOF
+          displayName: 'Gerar Dockerfile'
+
+        # Build & Push no ACR
+        - task: Docker@2
+          displayName: 'Docker build & push → ACR'
+          inputs:
+            containerRegistry: '$(dockerRegistryServiceConnection)'
+            repository: '$(imageRepository)'
+            command: 'buildAndPush'
+            Dockerfile: 'Dockerfile'
+            buildContext: '$(System.DefaultWorkingDirectory)'
+            tags: |
+              $(Build.BuildId)
+              latest
+
+# =========================
+# CD: deploy no Azure Container Instances (ACI) + health-check
+# =========================
+- stage: CD
+  displayName: 'CD — Deploy no Azure Container Instance'
+  dependsOn: CI
+  condition: succeeded()
+  jobs:
+    - job: deploy_aci
+      displayName: 'Deploy + Health-check'
+      steps:
+        - task: AzureCLI@2
+          displayName: 'Criar/Atualizar ACI e validar'
+          inputs:
+            azureSubscription: '$(azureServiceConnection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -e
+
+              IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+              DNS_LABEL="$(echo $(appName) | tr '[:upper:]' '[:lower:]')"
+
+              echo "Usando imagem: ${IMAGE}"
+
+              # Se já existir, substitui
+              if az container show -g $(resourceGroup) -n $(appName) &>/dev/null; then
+                az container delete -g $(resourceGroup) -n $(appName) --yes
+              fi
+
+              az container create \
+                --name $(appName) \
+                --resource-group $(resourceGroup) \
+                --location $(location) \
+                --image ${IMAGE} \
+                --cpu 1 \
+                --memory 1.5 \
+                --restart-policy Always \
+                --ports 8080 \
+                --dns-name-label ${DNS_LABEL} \
+                --registry-login-server $(acrLoginServer) \
+                --environment-variables \
+                    SPRING_PROFILES_ACTIVE=prod \
+                    SPRING_JPA_HIBERNATE_DDL_AUTO=update \
+                    SERVER_PORT=8080 \
+                --secure-environment-variables \
+                    SPRING_DATASOURCE_URL=$(DB_URL) \
+                    SPRING_DATASOURCE_USERNAME=$(DB_USER) \
+                    SPRING_DATASOURCE_PASSWORD=$(DB_PASSWORD)
+
+              echo "Aguardando container ficar Running..."
+              for i in {1..40}; do
+                STATE=$(az container show -g $(resourceGroup) -n $(appName) --query "instanceView.state" -o tsv)
+                echo "Estado: $STATE"
+                [ "$STATE" = "Running" ] && break
+                sleep 6
+              done
+
+              FQDN=$(az container show -g $(resourceGroup) -n $(appName) --query "ipAddress.fqdn" -o tsv)
+              echo "FQDN: $FQDN"
+              echo "##vso[task.setvariable variable=aciFqdn;isOutput=true]$FQDN"
+
+              echo "Health-check em /actuator/health"
+              for i in {1..30}; do
+                code=$(curl -s -o /dev/null -w "%{http_code}" "http://$FQDN:8080/actuator/health" || true)
+                echo "Tentativa $i -> $code"
+                [ "$code" = "200" ] && exit 0
+                sleep 5
+              done
+
+              echo "Logs do container:"
+              az container logs -g $(resourceGroup) -n $(appName) || true
+              exit 1
