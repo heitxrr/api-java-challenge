@@ -42,7 +42,7 @@ stages:
         - checkout: self
           fetchDepth: 1
 
-        # Evita o erro "UseJavaVersion@1" usando a task estável
+        # Instala Java 21
         - task: JavaToolInstaller@0
           displayName: 'Configurar Java 21'
           inputs:
@@ -50,20 +50,24 @@ stages:
             jdkArchitectureOption: 'x64'
             jdkSourceOption: 'PreInstalled'
 
-        # Cache do Gradle acelera os builds
+        # Instala o Gradle (substitui o uso do gradlew)
+        - script: |
+            sudo apt-get update
+            sudo apt-get install -y gradle
+            gradle -v
+          displayName: 'Instalar Gradle'
+
+        # Cache Gradle
         - task: Cache@2
           displayName: 'Cache Gradle'
           inputs:
-            key: 'gradle | "$(Agent.OS)" | **/gradle-wrapper.properties'
+            key: 'gradle | "$(Agent.OS)"'
             restoreKeys: |
               gradle | "$(Agent.OS)"
             path: ~/.gradle
 
-        - script: chmod +x ./gradlew
-          displayName: 'Permissão gradlew'
-
         # Roda testes com perfil 'test'
-        - script: ./gradlew clean test jacocoTestReport --no-daemon
+        - script: gradle clean test jacocoTestReport --no-daemon
           displayName: 'Testes + Jacoco'
           env:
             SPRING_PROFILES_ACTIVE: 'test'
@@ -73,7 +77,7 @@ stages:
           displayName: 'Publicar testes (JUnit)'
           inputs:
             testResultsFormat: 'JUnit'
-            testResultsFiles: '/TEST-*.xml'
+            testResultsFiles: '**/TEST-*.xml'
             searchFolder: '$(System.DefaultWorkingDirectory)'
             failTaskOnFailedTests: true
 
@@ -81,12 +85,12 @@ stages:
           displayName: 'Publicar cobertura (Jacoco)'
           inputs:
             codeCoverageTool: 'JaCoCo'
-            summaryFileLocation: '$(System.DefaultWorkingDirectory)//build/reports/jacoco/test/jacocoTestReport.xml'
-            reportDirectory: '$(System.DefaultWorkingDirectory)//build/reports/jacoco/test/html'
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)/build/reports/jacoco/test/jacocoTestReport.xml'
+            reportDirectory: '$(System.DefaultWorkingDirectory)/build/reports/jacoco/test/html'
             failIfCoverageEmpty: false
 
         # Gera o JAR
-        - script: ./gradlew bootJar --no-daemon
+        - script: gradle bootJar --no-daemon
           displayName: 'Build JAR'
 
         # Mantém artefato
@@ -104,30 +108,28 @@ stages:
             artifactName: 'drop'
             publishLocation: 'Container'
 
-        # Cria Dockerfile dinâmico no pipeline
+        # Cria Dockerfile dinâmico
         - bash: |
             echo "Gerando Dockerfile..."
             cat <<'EOF' > Dockerfile
             # =============================
             # Etapa 1 — Build da aplicação
             # =============================
-            FROM eclipse-temurin:21-jdk AS build
+            FROM openjdk:21-jdk-slim AS build
 
             WORKDIR /app
 
-            COPY gradlew .
-            COPY gradle gradle
-            COPY build.gradle .
-            COPY settings.gradle .
-            COPY src src
+            # Instala o Gradle
+            RUN apt-get update && apt-get install -y gradle
 
-            RUN chmod +x gradlew
-            RUN ./gradlew clean bootJar --no-daemon
+            COPY . .
+
+            RUN gradle clean bootJar --no-daemon
 
             # =============================
             # Etapa 2 — Imagem final
             # =============================
-            FROM eclipse-temurin:21-jre
+            FROM openjdk:21-jdk-slim
 
             WORKDIR /app
 
@@ -135,13 +137,11 @@ stages:
 
             EXPOSE 8080
 
-            # Argumentos que podem ser passados no build
             ARG SPRING_PROFILES_ACTIVE=prod
             ARG SPRING_DATASOURCE_URL
             ARG SPRING_DATASOURCE_USERNAME
             ARG SPRING_DATASOURCE_PASSWORD
 
-            # Variáveis de ambiente para execução
             ENV SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
             ENV SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
             ENV SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
@@ -190,7 +190,6 @@ stages:
 
               echo "Usando imagem: ${IMAGE}"
 
-              # Se já existir, substitui
               if az container show -g $(resourceGroup) -n $(appName) &>/dev/null; then
                 az container delete -g $(resourceGroup) -n $(appName) --yes
               fi
