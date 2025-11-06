@@ -1,22 +1,23 @@
 # =============================
-# Dockerfile para aplicação Java com Maven
+# Dockerfile para aplicação Java 21 com Maven
 # =============================
 
-# Stage 1: Build da aplicação usando Maven
-FROM maven:3.9.2-eclipse-temurin-17 AS build
+# Stage 1: Build da aplicação usando Maven + JDK 21
+FROM maven:3.9.2-eclipse-temurin-21 AS build
 
-# Diretório de trabalho dentro do container
 WORKDIR /app
 
-# Copia os arquivos do projeto para dentro do container
+# Copia apenas o pom.xml primeiro para aproveitar cache
 COPY pom.xml .
+
+# Copia o código fonte
 COPY src ./src
 
 # Executa o build da aplicação (gera o JAR)
 RUN mvn clean package -DskipTests
 
 # Stage 2: Imagem mínima para rodar a aplicação
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:21-jdk-alpine
 
 WORKDIR /app
 
