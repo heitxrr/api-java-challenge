@@ -120,3 +120,4 @@ CREATE TRIGGER trg_auditoria_mov
 AFTER INSERT OR UPDATE OR DELETE ON movimentacao
 FOR EACH ROW
 EXECUTE FUNCTION trg_auditoria_mov_fn();
+
