@@ -4,7 +4,8 @@ INSERT INTO moto VALUES (3, 'ABC1A25', 'Ativa', 3);
 INSERT INTO moto VALUES (4, 'ABC1A26', 'Manutenção', 4);
 INSERT INTO moto VALUES (5, 'ABC1A27', 'Ativa', 5);
 
-INSERT INTO manutencao VALUES (1, SYSDATE, 'Troca de óleo', 4);
+-- SYSDATE (Oracle) -> CURRENT_TIMESTAMP (Postgres)
+INSERT INTO manutencao VALUES (1, CURRENT_TIMESTAMP, 'Troca de óleo', 4);
 
 INSERT INTO setor VALUES (1, 'Setor 1', 1);
 INSERT INTO setor VALUES (2, 'Setor 2', 1);
