@@ -4,6 +4,8 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
+##testando commit automatico
+
 steps:
   - task: Docker@2
     inputs:
