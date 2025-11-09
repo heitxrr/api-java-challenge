@@ -5,14 +5,6 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  - script: echo Hello, world!
-    displayName: 'Run a one-line script'
-
-  - script: |
-      echo add other tasks to build, test, and deploy your project.
-      echo see https://aka.ms/yaml
-    displayName: 'Run a multi-line script'
-
   - task: Docker@2
     inputs:
       containerRegistry: 'javarm558301'
