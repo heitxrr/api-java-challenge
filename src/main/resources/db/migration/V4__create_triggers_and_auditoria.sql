@@ -1,9 +1,14 @@
 -- INSERÇÕES DE EXEMPLO
-INSERT INTO movimentacao VALUES (1, NOW(), 1, 1, 1, 2);
-INSERT INTO movimentacao VALUES (2, NOW(), 2, 2, 1, 3);
-INSERT INTO movimentacao VALUES (3, NOW(), 3, 1, 3, 4);
-INSERT INTO movimentacao VALUES (4, NOW(), 4, 3, 4, 5);
-INSERT INTO movimentacao VALUES (5, NOW(), 5, 2, 2, NULL);
+INSERT INTO movimentacao (dt_mov, id_moto, id_setor, id_operador_origem, id_operador_destino) 
+VALUES (NOW(), 1, 1, 1, 2);
+INSERT INTO movimentacao (dt_mov, id_moto, id_setor, id_operador_origem, id_operador_destino) 
+VALUES (NOW(), 2, 2, 1, 3);
+INSERT INTO movimentacao (dt_mov, id_moto, id_setor, id_operador_origem, id_operador_destino) 
+VALUES (NOW(), 3, 1, 3, 4);
+INSERT INTO movimentacao (dt_mov, id_moto, id_setor, id_operador_origem, id_operador_destino) 
+VALUES (NOW(), 4, 3, 4, 5);
+INSERT INTO movimentacao (dt_mov, id_moto, id_setor, id_operador_origem, id_operador_destino) 
+VALUES (NOW(), 5, 2, 2, NULL);
 
 -- FUNÇÃO PARA FORMATAR MOVIMENTAÇÃO EM JSON
 CREATE OR REPLACE FUNCTION fn_formatar_mov_json(
@@ -77,10 +82,10 @@ BEGIN
                op2.nm_operador AS operador_destino,
                s.nm_setor
         FROM movimentacao m
-                 JOIN moto mt ON m.id_moto = mt.id_moto
-                 JOIN operador op1 ON m.id_operador_origem = op1.id_operador
-                 LEFT JOIN operador op2 ON m.id_operador_destino = op2.id_operador
-                 JOIN setor s ON m.id_setor = s.id_setor
+        JOIN moto mt ON m.id_moto = mt.id_moto
+        JOIN operador op1 ON m.id_operador_origem = op1.id_operador
+        LEFT JOIN operador op2 ON m.id_operador_destino = op2.id_operador
+        JOIN setor s ON m.id_setor = s.id_setor
     LOOP
         v_json := fn_formatar_mov_json(
             r.id_mov, r.dt_mov, r.mt_placa,
@@ -100,15 +105,13 @@ BEGIN
     v_usuario := current_user;
 
     IF TG_OP = 'INSERT' THEN
-        INSERT INTO auditoria_movimentacao (operacao, usuario, data_execucao)
+        INSERT INTO auditoria_movimentacao (operacao, usuario, data_hora)
         VALUES ('INSERT', v_usuario, NOW());
-
     ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO auditoria_movimentacao (operacao, usuario, data_execucao)
+        INSERT INTO auditoria_movimentacao (operacao, usuario, data_hora)
         VALUES ('UPDATE', v_usuario, NOW());
-
     ELSIF TG_OP = 'DELETE' THEN
-        INSERT INTO auditoria_movimentacao (operacao, usuario, data_execucao)
+        INSERT INTO auditoria_movimentacao (operacao, usuario, data_hora)
         VALUES ('DELETE', v_usuario, NOW());
     END IF;
 
@@ -120,4 +123,3 @@ CREATE TRIGGER trg_auditoria_mov
 AFTER INSERT OR UPDATE OR DELETE ON movimentacao
 FOR EACH ROW
 EXECUTE FUNCTION trg_auditoria_mov_fn();
-
