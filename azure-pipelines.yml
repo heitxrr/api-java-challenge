@@ -1,77 +1,24 @@
 trigger:
-  branches:
-    include:
-      - main
-      - master
+-main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 
-variables:
-  appName: 'myassist554611'
-  acrName: 'flowmoto'
-  acrLoginServer: 'flowmoto.azurecr.io'
-  imageRepository: 'fiap/$(appName)'
-  imageTag: '$(Build.BuildId)'
-  dockerRegistryServiceConnection: 'sc-acr-flowmoto'
-  azureServiceConnection: 'sc-azure-flowmoto'
-  resourceGroup: 'FlowMoto'
-  location: 'eastus'
+steps:
+  - script: echo Hello, world!
+  displayName:"Run a one-line script"
 
-stages:
-# =====================================
-# ETAPA 1 - BUILD e PUSH para o ACR
-# =====================================
-- stage: Build
-  displayName: 'Build and Push Docker Image'
-  jobs:
-    - job: Build
-      displayName: 'Build and Push Docker Image'
-      steps:
-        # Login no ACR
-        - task: Docker@2
-          displayName: 'Build and Push image to ACR'
-          inputs:
-            containerRegistry: '$(dockerRegistryServiceConnection)'
-            repository: '$(imageRepository)'
-            command: 'buildAndPush'
-            Dockerfile: 'Dockerfile'
-            tags: |
-              $(imageTag)
-
-# =====================================
-# ETAPA 2 - DEPLOY no ACI
-# =====================================
-- stage: Deploy
-  displayName: 'Deploy to Azure Container Instance'
-  dependsOn: Build
-  jobs:
-    - job: Deploy
-      displayName: 'Deploy Container to ACI'
-      steps:
-        - task: AzureCLI@2
-          displayName: 'Deploy container to ACI'
-          inputs:
-            azureSubscription: '$(azureServiceConnection)'
-            scriptType: 'bash'
-            scriptLocation: 'inlineScript'
-            inlineScript: |
-              echo "Deploying container $(appName) to Azure Container Instance..."
-
-              # Faz login no ACR
-              az acr login --name $(acrName)
-
-              # Cria ou atualiza o container no ACI
-              az container create \
-                --name $(appName) \
-                --resource-group $(resourceGroup) \
-                --image $(acrLoginServer)/$(imageRepository):$(imageTag) \
-                --cpu 1 \
-                --memory 1.5 \
-                --dns-name-label $(appName) \
-                --ports 8080 \
-                --registry-login-server $(acrLoginServer) \
-                --assign-identity \
-                --restart-policy Always
-
-              echo "Deploy concluído no Azure Container Instance!"
+  -script: |
+  echo add other tasks to build, test, and deploy your project.
+  echo see https:aka.ms/yaml
+  
+  displayName: 'Run a multi-line script'
+- task: Docker@2
+  inputs:
+    containerRegistry: 'javarm558301'
+    repository: 'javasql'
+    command: 'buildAndPush'
+    Dockerfile: '**/Dockerfile'
+    tags: |
+      $(Build.BuildId)
+      latest
