@@ -1,14 +1,14 @@
 trigger:
   - main
-
+ 
 pool:
   vmImage: 'ubuntu-latest'
-
+ 
 steps:
   - task: Docker@2
     inputs:
-      containerRegistry: 'javarm558301'
-      repository: 'javasql'
+      containerRegistry: 'acrrm558301'
+      repository: 'acr'
       command: 'buildAndPush'
       Dockerfile: '**/Dockerfile'
       tags: |
